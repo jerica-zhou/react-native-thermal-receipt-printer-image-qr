@@ -3,6 +3,7 @@
 #import "RNBLEPrinter.h"
 #import "PrinterSDK.h"
 #import "TscCommand.h"
+#import "ConnecterManager.h"
 
 @implementation RNBLEPrinter
 
@@ -32,6 +33,7 @@ RCT_EXPORT_METHOD(init:(RCTResponseSenderBlock)successCallback
     m_printer = nil;
 }
 
+/*
 RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
                   fail:(RCTResponseSenderBlock)errorCallback) {
     @try {
@@ -50,11 +52,59 @@ RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
         errorCallback(@[exception.reason]);
     }
 }
+*/
+
+RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
+                  fail:(RCTResponseSenderBlock)errorCallback) {
+    @try {
+      NSMutableDictionary *dicts = [[NSMutableDictionary alloc] init];
+      [Manager scanForPeripheralsWithServices:nil options:nil discover:^(CBPeripheral * _Nullable peripheral, NSDictionary<NSString *,id> * _Nullable advertisementData, NSNumber * _Nullable RSSI) {
+          if (peripheral.name != nil) {
+              NSLog(@"name -> %@", peripheral.name);
+              
+              NSDictionary *item = @{ @"peripheral": peripheral, @"device_name": peripheral.name, @"inner_mac_address": peripheral.identifier.UUIDString };
+              [dicts setObject:item forKey:peripheral.identifier.UUIDString];
+              NSLog(@"name=======%@uuid===%@", item.peripheral.name, item.peripheral.identifier.UUIDString);
+
+              NSMutableArray *mapped = [NSMutableArray arrayWithCapacity:[dicts count]];
+              [mapped addObject:item];
+
+              NSMutableArray *uniquearray = (NSMutableArray *)[[NSSet setWithArray:mapped] allObjects];;
+              successCallback(@[uniquearray]);
+          }
+      }];
+    } @catch (NSException *exception) {
+        errorCallback(@[exception.reason]);
+    }
+}
+
+RCT_EXPORT_METHOD(stopScanne) {
+    @try {
+      [Manager stopScan];
+    } @catch (NSException *exception) {
+      NSLog(@"%@", exception.reason);
+    }
+}
+
+RCT_EXPORT_METHOD(connectAndPrint:(NSString *)inner_mac_address
+                  :(NSString *)jsonStr
+                  success:(RCTResponseSenderBlock)successCallback
+                  fail:(RCTResponseSenderBlock)errorCallback) {
+    @try {
+        if ([Manager isConnected]) {
+            [Manager write:[self printParcel:jsonStr] receCallBack:^(NSData *data) {}];
+        } else {
+            //connect first
+        }
+    } @catch (NSException *exception) {
+        errorCallback(@[exception.reason]);
+    }
+}
 
 -(NSData *)printParcel:(NSString *) jsonStr {
     TscCommand *command = [[TscCommand alloc]init];
     [command addSize:50 :70];
-    [command addGapWithM:gap withN:0];
+    //[command addGapWithM:2 withN:0];
     [command addReference:0 :0];
     [command addTear:@"ON"];
     [command addQueryPrinterStatus:ON];
@@ -62,18 +112,18 @@ RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
 
     NSMutableDictionary *dict=[NSJSONSerialization JSONObjectWithData:[jsonStr dataUsingEncoding:NSUTF8StringEncoding] options:kNilOptions error:nil];
     
-    (NSString *) CulCode = [dict valueForKey:@"CulCode"];
-    (NSString *) Name = [dict valueForKey:@"Name"];
-    (NSString *) Unit = [dict valueForKey:@"Unit"];
-    (NSString *) Mobile = [dict valueForKey:@"Mobile"];
-    (NSString *) QRData = [dict valueForKey:@"QRData"];
+    NSString *CulCode = [dict valueForKey:@"CulCode"];
+    NSString *Name = [dict valueForKey:@"Name"];
+    NSString *Unit = [dict valueForKey:@"Unit"];
+    NSString *Mobile = [dict valueForKey:@"Mobile"];
+    NSString *QRData = [dict valueForKey:@"QRData"];
     
     NSLog(@"Name:%@", Name);
     
-    if (CulCode.equals("EN")) {
+    if ([CulCode isEqualToString:(@"EN")]) {
         [command addTextwithX:20 withY:80 withFont:@"2" withRotation:0 withXscal:1 withYscal:1 withText:Name];
         [command addTextwithX:20 withY:130 withFont:@"2" withRotation:0 withXscal:1 withYscal:1 withText:Unit];
-    } else if (CulCode.equals("CHS")) {
+    } else if ([CulCode isEqualToString:(@"CHS")]) {
         [command addTextwithX:20 withY:80 withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:Name];
         [command addTextwithX:20 withY:130 withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:Unit];
     } else {
@@ -89,21 +139,6 @@ RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
     return [command getCommand];
 }
 
-RCT_EXPORT_METHOD(connectAndPrint:(NSString *)inner_mac_address
-                  (NSString *)jsonStr,
-                  success:(RCTResponseSenderBlock)successCallback
-                  fail:(RCTResponseSenderBlock)errorCallback) {
-    @try {
-        self printParcel:jsonStr;
-        /*if ([Manager isConnected]) {
-            [Manager write:[self printParcel:jsonStr] receCallBack:^(NSData *data) {}];
-        } else {
-            //to connect
-        }*/
-    } @catch (NSException *exception) {
-        errorCallback(@[exception.reason]);
-    }
-}
 
 RCT_EXPORT_METHOD(connectPrinter:(NSString *)inner_mac_address
                   success:(RCTResponseSenderBlock)successCallback
