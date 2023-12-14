@@ -19,6 +19,7 @@ RCT_EXPORT_METHOD(init:(RCTResponseSenderBlock)successCallback
     @try {
         _printerArray = [NSMutableArray new];
         m_printer = [[NSObject alloc] init];
+        peripheralDicts = [NSMutableDictionary new];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleNetPrinterConnectedNotification:) name:@"NetPrinterConnected" object:nil];
         // API MISUSE: <CBCentralManager> can only accept this command while in the powered on state
         [[PrinterSDK defaultPrinterSDK] scanPrintersWithCompletion:^(Printer* printer){}];
@@ -54,27 +55,62 @@ RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
 }
 */
 
-RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
-                  fail:(RCTResponseSenderBlock)errorCallback) {
+-(void) startScane:(RCTResponseSenderBlock)successCallback
+              fail:(RCTResponseSenderBlock)errorCallback {
     @try {
-      NSMutableDictionary *dicts = [[NSMutableDictionary alloc] init];
-      [Manager scanForPeripheralsWithServices:nil options:nil discover:^(CBPeripheral * _Nullable peripheral, NSDictionary<NSString *,id> * _Nullable advertisementData, NSNumber * _Nullable RSSI) {
-          if (peripheral.name != nil) {
-              NSLog(@"name -> %@", peripheral.name);
-              
-              NSDictionary *item = @{ @"peripheral": peripheral, @"device_name": peripheral.name, @"inner_mac_address": peripheral.identifier.UUIDString };
-              [dicts setObject:item forKey:peripheral.identifier.UUIDString];
-              NSLog(@"name=======%@uuid===%@", item.peripheral.name, item.peripheral.identifier.UUIDString);
-
-              NSMutableArray *mapped = [NSMutableArray arrayWithCapacity:[dicts count]];
-              [mapped addObject:item];
-
-              NSMutableArray *uniquearray = (NSMutableArray *)[[NSSet setWithArray:mapped] allObjects];;
-              successCallback(@[uniquearray]);
-          }
-      }];
+        NSMutableDictionary *dicts = [[NSMutableDictionary alloc] init];
+        [Manager scanForPeripheralsWithServices:nil options:nil discover:^(CBPeripheral * _Nullable peripheral, NSDictionary<NSString *,id> * _Nullable advertisementData, NSNumber * _Nullable RSSI) {
+            if (peripheral.name != nil) {
+                NSDictionary *item = @{ @"device_name": peripheral.name, @"inner_mac_address": peripheral.identifier.UUIDString };
+                [dicts setObject:item forKey:peripheral.identifier.UUIDString];
+                NSLog(@"name=======%@uuid===%@", peripheral.name, peripheral.identifier.UUIDString);
+                [self->peripheralDicts setObject:peripheral forKey:peripheral.identifier.UUIDString];
+                
+                if ([peripheral.name containsString:@"GP-M322"]) {
+                    [Manager stopScan];
+                    NSArray *mapped = [dicts allValues];
+                    
+                    NSArray *uniquearray = (NSArray *)[[NSSet setWithArray:mapped] allObjects];;
+                    successCallback(@[uniquearray]);
+                }
+            }
+        }];
     } @catch (NSException *exception) {
         errorCallback(@[exception.reason]);
+    }
+}
+
+RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
+                  fail:(RCTResponseSenderBlock)errorCallback) {
+    [Manager stopScan];
+    if (Manager.bleConnecter == nil) {
+        __weak __typeof(self)weakSelf = self;
+        [Manager didUpdateState:^(NSInteger state) {
+             __strong __typeof(weakSelf)strongSelf = weakSelf;
+            switch (state) {
+                case CBManagerStateUnsupported:
+                    NSLog(@"The platform/hardware doesn't support Bluetooth Low Energy.");
+                    break;
+                case CBManagerStateUnauthorized:
+                    NSLog(@"The app is not authorized to use Bluetooth Low Energy.");
+                    break;
+                case CBManagerStatePoweredOff:
+                    // 未连接
+                    [Manager stopScan];
+                    [Manager setIsConnected:NO];
+                    NSLog(@"Bluetooth is currently powered off.");
+                    break;
+                case CBManagerStatePoweredOn:
+                    [strongSelf startScane:successCallback fail:errorCallback];
+                    NSLog(@"Bluetooth power on");
+                    break;
+                case CBManagerStateUnknown:
+                default:
+                    break;
+            }
+        }];
+    } else {
+        [self startScane:successCallback fail:errorCallback];
     }
 }
 
@@ -91,10 +127,42 @@ RCT_EXPORT_METHOD(connectAndPrint:(NSString *)inner_mac_address
                   success:(RCTResponseSenderBlock)successCallback
                   fail:(RCTResponseSenderBlock)errorCallback) {
     @try {
-        if ([Manager isConnected]) {
+        if ([Manager isConnected] && [[Manager UUIDString] isEqualToString:inner_mac_address]) {
             [Manager write:[self printParcel:jsonStr] receCallBack:^(NSData *data) {}];
         } else {
-            //connect first
+            if (![Manager isConnected]) {
+                NSLog(@"Not connected");
+                //connect first ->
+            }
+            else {
+                //close and re-connect ->
+                NSLog(@"Connected to other printer, so close first");
+                [Manager close];
+            }
+            CBPeripheral *peripheral = peripheralDicts[inner_mac_address];
+                
+            //NSLog(@"peripheral -> %@", peripheral.name);
+            Manager.currentConnMethod = BLUETOOTH;
+            
+            [Manager connectPeripheral:peripheral options:nil timeout:2 connectBlack:^(ConnectState state) {
+                switch (state) {
+                    case CONNECT_STATE_CONNECTED:
+                        NSLog(@"/////连接成功");
+                        Manager.isConnected = YES;
+                        Manager.UUIDString = peripheral.identifier.UUIDString;
+                        
+                        [Manager write:[self printParcel:jsonStr] receCallBack:^(NSData *data) {}];
+                        
+                        break;
+                    case CONNECT_STATE_CONNECTING:
+                        NSLog(@"////连接中....");
+                        break;
+                    default:
+                        NSLog(@"/////连接失败");
+                        Manager.isConnected = NO;
+                        break;
+                }
+            }];
         }
     } @catch (NSException *exception) {
         errorCallback(@[exception.reason]);
@@ -326,6 +394,7 @@ RCT_EXPORT_METHOD(closeConn) {
         !m_printer ? [NSException raise:@"Invalid connection" format:@"closeConn: Can't connect to printer"] : nil;
         [[PrinterSDK defaultPrinterSDK] disconnect];
         m_printer = nil;
+        [Manager close];
     } @catch (NSException *exception) {
         NSLog(@"%@", exception.reason);
     }

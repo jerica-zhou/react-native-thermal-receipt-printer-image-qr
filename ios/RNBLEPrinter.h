@@ -19,6 +19,7 @@
 @interface RNBLEPrinter : NSObject <RCTBridgeModule>{
     NSMutableArray* _printerArray;
     NSObject* m_printer;
+    NSMutableDictionary* peripheralDicts;
 }
 @end
 
