@@ -11,10 +11,12 @@ import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.WritableArray;
+import com.gprinter.command.LabelCommand;
 import com.pinmi.react.printer.adapter.BLEPrinterAdapter;
 import com.pinmi.react.printer.adapter.BLEPrinterDeviceId;
 import com.pinmi.react.printer.adapter.PrinterAdapter;
 import com.pinmi.react.printer.adapter.PrinterDevice;
+import com.pinmi.react.printer.adapter.BLEPrinter;
 //import com.pinmi.react.printer.adapter.PrinterOption;
 
 import java.util.List;
@@ -28,6 +30,7 @@ public class RNBLEPrinterModule extends ReactContextBaseJavaModule implements RN
     protected ReactApplicationContext reactContext;
 
     protected PrinterAdapter adapter;
+    protected BLEPrinter myPrinter;
 
     public RNBLEPrinterModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -40,12 +43,14 @@ public class RNBLEPrinterModule extends ReactContextBaseJavaModule implements RN
     public void init(Callback successCallback, Callback errorCallback) {
         this.adapter = BLEPrinterAdapter.getInstance();
         this.adapter.init(reactContext, successCallback, errorCallback);
+        myPrinter = BLEPrinter.getInstance();
     }
 
     @ReactMethod
     @Override
     public void closeConn() {
         adapter.closeConnectionIfExists();
+        myPrinter.close();
     }
 
     @ReactMethod
@@ -88,6 +93,11 @@ public class RNBLEPrinterModule extends ReactContextBaseJavaModule implements RN
     @ReactMethod
     public void connectPrinter(String innerAddress, Callback successCallback, Callback errorCallback) {
         adapter.selectDevice(BLEPrinterDeviceId.valueOf(innerAddress), successCallback, errorCallback);
+    }
+
+    @ReactMethod
+    public void connectAndPrint(String innerAddress, String jsonData, Callback successCallback, Callback errorCallback) {
+        myPrinter.connectAndPrint(innerAddress, jsonData);
     }
 
     @Override

@@ -407,6 +407,20 @@ var BLEPrinter = {
       );
     });
   },
+  connectAndPrint: function (inner_mac_address, text) {
+    return new Promise(function (resolve, reject) {
+      return RNBLEPrinter.connectAndPrint(
+        inner_mac_address,
+        text,
+        function (printer) {
+          return resolve(printer);
+        },
+        function (error) {
+          return reject(error);
+        }
+      );
+    });
+  },
   connectPrinter: function (inner_mac_address) {
     return new Promise(function (resolve, reject) {
       return RNBLEPrinter.connectPrinter(
