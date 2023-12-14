@@ -2,6 +2,7 @@
 
 #import "RNBLEPrinter.h"
 #import "PrinterSDK.h"
+#import "TscCommand.h"
 
 @implementation RNBLEPrinter
 
@@ -45,6 +46,60 @@ RCT_EXPORT_METHOD(getDeviceList:(RCTResponseSenderBlock)successCallback
             NSMutableArray *uniquearray = (NSMutableArray *)[[NSSet setWithArray:mapped] allObjects];;
             successCallback(@[uniquearray]);
         }];
+    } @catch (NSException *exception) {
+        errorCallback(@[exception.reason]);
+    }
+}
+
+-(NSData *)printParcel:(NSString *) jsonStr {
+    TscCommand *command = [[TscCommand alloc]init];
+    [command addSize:50 :70];
+    [command addGapWithM:gap withN:0];
+    [command addReference:0 :0];
+    [command addTear:@"ON"];
+    [command addQueryPrinterStatus:ON];
+    [command addCls];
+
+    NSMutableDictionary *dict=[NSJSONSerialization JSONObjectWithData:[jsonStr dataUsingEncoding:NSUTF8StringEncoding] options:kNilOptions error:nil];
+    
+    (NSString *) CulCode = [dict valueForKey:@"CulCode"];
+    (NSString *) Name = [dict valueForKey:@"Name"];
+    (NSString *) Unit = [dict valueForKey:@"Unit"];
+    (NSString *) Mobile = [dict valueForKey:@"Mobile"];
+    (NSString *) QRData = [dict valueForKey:@"QRData"];
+    
+    NSLog(@"Name:%@", Name);
+    
+    if (CulCode.equals("EN")) {
+        [command addTextwithX:20 withY:80 withFont:@"2" withRotation:0 withXscal:1 withYscal:1 withText:Name];
+        [command addTextwithX:20 withY:130 withFont:@"2" withRotation:0 withXscal:1 withYscal:1 withText:Unit];
+    } else if (CulCode.equals("CHS")) {
+        [command addTextwithX:20 withY:80 withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:Name];
+        [command addTextwithX:20 withY:130 withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:Unit];
+    } else {
+        [command addTextwithX:20 withY:80 withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:Name];
+        [command addTextwithX:20 withY:130 withFont:@"TSS24.BF2" withRotation:0 withXscal:1 withYscal:1 withText:Unit];
+    }
+    [command addTextwithX:20 withY:180 withFont:@"2" withRotation:0 withXscal:1 withYscal:1 withText:Mobile];
+    [command addQRCode:70 :258 :@"L" :4 :@"A" :0 :QRData];
+    
+    [command addPrint:1 :1];
+    [command addSound:2 :100];
+    [command queryPrinterStatus]; // 添加该指令可返回打印机状态，若不需要则屏蔽
+    return [command getCommand];
+}
+
+RCT_EXPORT_METHOD(connectAndPrint:(NSString *)inner_mac_address
+                  (NSString *)jsonStr,
+                  success:(RCTResponseSenderBlock)successCallback
+                  fail:(RCTResponseSenderBlock)errorCallback) {
+    @try {
+        self printParcel:jsonStr;
+        /*if ([Manager isConnected]) {
+            [Manager write:[self printParcel:jsonStr] receCallBack:^(NSData *data) {}];
+        } else {
+            //to connect
+        }*/
     } @catch (NSException *exception) {
         errorCallback(@[exception.reason]);
     }
